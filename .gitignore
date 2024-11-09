@@ -1,0 +1,7 @@
+.*
+!.gitignore
+
+booker
+*.toml
+*.pdf
+*.json
