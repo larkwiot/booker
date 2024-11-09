@@ -1,0 +1,6 @@
+[tika]
+enable = true
+host = "localhost"
+
+[google]
+enable = true
