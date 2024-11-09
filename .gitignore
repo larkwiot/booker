@@ -5,3 +5,5 @@ booker
 *.toml
 *.pdf
 *.json
+*.txt
+*.log
