@@ -41,7 +41,7 @@ type BookManager struct {
 	bookStateLock *sync.Mutex
 	books         map[string]book.Book
 	dryRun        bool
-	waitGroup     *sync.WaitGroup
+	scanWaitGroup *sync.WaitGroup
 	pb            *progressbar.ProgressBar
 	outputWriter  *util.JsonStreamWriter
 	threads       int
@@ -62,7 +62,7 @@ func NewBookManager(conf *config.Config, threads int) (*BookManager, error) {
 		bookStateLock: &sync.Mutex{},
 		books:         make(map[string]book.Book),
 		dryRun:        false,
-		waitGroup:     &sync.WaitGroup{},
+		scanWaitGroup: &sync.WaitGroup{},
 	}
 
 	if threads == 0 {
@@ -108,11 +108,15 @@ func (bm *BookManager) Shutdown() {
 	close(bm.searchQueue)
 	close(bm.collateQueue)
 	close(bm.finishQueue)
-	bm.waitGroup.Wait()
+	bm.scanWaitGroup.Wait()
 }
 
 func (bm *BookManager) bestThreadCount() int {
 	return runtime.NumCPU() * len(bm.providers) * 2
+}
+
+func (bm *BookManager) queueDepth() int {
+	return len(bm.extractQueue) + len(bm.searchQueue) + len(bm.collateQueue) + len(bm.finishQueue)
 }
 
 func (bm *BookManager) finishBook(bk *book.Book) {
@@ -149,34 +153,38 @@ func (bm *BookManager) removeProcessedBook(filePath string) {
 	delete(bm.books, filePath)
 }
 
+func (bm *BookManager) getProcessedBookCount() uint64 {
+	bm.bookStateLock.Lock()
+	defer bm.bookStateLock.Unlock()
+	return uint64(len(bm.books))
+}
+
 func (bm *BookManager) dispatch() {
-	//log.Println("book manager: dispatcher launched")
-
-	defer func() {
-		//log.Println("book manager: dispatcher quitting")
-		bm.waitGroup.Done()
-	}()
-
 	for {
 		select {
 		case bk, isOpen := <-bm.extractQueue:
 			if !isOpen {
 				return
 			}
-			bm.waitGroup.Add(1)
+			bm.scanWaitGroup.Add(1)
 			go bm.extract(bk)
 		case srch, isOpen := <-bm.searchQueue:
 			if !isOpen {
 				return
 			}
-			bm.waitGroup.Add(1)
+			bm.scanWaitGroup.Add(1)
 			go bm.search(srch)
 		case res, isOpen := <-bm.collateQueue:
 			if !isOpen {
 				return
 			}
-			bm.waitGroup.Add(1)
+			bm.scanWaitGroup.Add(1)
 			go bm.collate(res)
+		case bk, isOpen := <-bm.finishQueue:
+			if !isOpen {
+				return
+			}
+			go bm.finishBook(&bk)
 		case <-bm.quit:
 			return
 		}
@@ -238,17 +246,16 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 		progressbar.OptionShowIts(),
 	)
 
-	bm.pb.Set(len(bm.books))
+	bm.pb.Set(int(bm.getProcessedBookCount()))
 
 	// write any existing books back out (mainly if we imported a cache)
 	for _, bk := range bm.books {
 		bm.outputWriter.Input <- makeJsonStreamItem(&bk)
 	}
 
-	bm.waitGroup.Add(1)
-	go bm.dispatch()
+	var bookCount uint64
 
-	time.Sleep(1 * time.Second)
+	go bm.dispatch()
 
 	err = filepath.WalkDir(scanPath, func(path string, d fs.DirEntry, err error) error {
 		if d.IsDir() {
@@ -264,6 +271,8 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 			//log.Printf("%s is not an accepted filetype\n", ext)
 			return nil
 		}
+
+		bookCount++
 
 		if bm.isBookProcessed(path) {
 			if retry {
@@ -286,10 +295,12 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 		log.Printf("error: failed to scan %s: %s\n", scanPath, err)
 	}
 
-	bm.waitGroup.Wait()
+	for bm.getProcessedBookCount() != bookCount {
+		time.Sleep(500 * time.Millisecond)
+	}
+	bm.scanWaitGroup.Wait()
 
 	bm.pb.Close()
-	bm.pb = nil
 
 	log.Println("book manager: scan complete")
 }
@@ -303,14 +314,14 @@ func (bm *BookManager) importFrom(outputPath string) error {
 }
 
 func (bm *BookManager) extract(bk book.Book) {
-	defer bm.waitGroup.Done()
+	defer bm.scanWaitGroup.Done()
 
 	texts := make([]string, 0)
 
 	for _, extractor := range bm.extractors {
 		text, err := extractor.ExtractText(&bk, bm.maxCharacters)
 		if err != nil {
-			log.Printf("error: failed to extract text from %s: %s\n", bk.Filepath, err)
+			//log.Printf("error: failed to extract text from %s: %s\n", bk.Filepath, err)
 			continue
 		}
 		texts = append(texts, text)
@@ -340,7 +351,7 @@ func (bm *BookManager) extract(bk book.Book) {
 }
 
 func (bm *BookManager) search(search providers.SearchTerms) {
-	defer bm.waitGroup.Done()
+	defer bm.scanWaitGroup.Done()
 
 	if bm.IsDryRun() {
 		return
@@ -368,7 +379,7 @@ func (bm *BookManager) search(search providers.SearchTerms) {
 }
 
 func (bm *BookManager) collate(results []book.BookResult) {
-	defer bm.waitGroup.Done()
+	defer bm.scanWaitGroup.Done()
 
 	result, err := book.ChooseBestResult(results)
 	if err != nil {

@@ -53,17 +53,22 @@ func NewJsonStreamWriter(filePath string) (*JsonStreamWriter, error) {
 
 func (stream *JsonStreamWriter) writer() {
 	for {
-		inQueue := len(stream.Input)
-		if inQueue >= stream.batchThreshold {
-			items := make([]*JsonStreamWriterItem, inQueue)
-			for i := range inQueue {
-				items[i] = <-stream.Input
-			}
-			err := stream.WriteBatch(items)
-			if err != nil {
-				panic(err)
-			}
-		}
+		//inQueue := len(stream.Input)
+		//if inQueue >= stream.batchThreshold {
+		//	items := make([]*JsonStreamWriterItem, inQueue)
+		//	for i := range inQueue {
+		//		item, isOpen := <-stream.Input
+		//		if !isOpen {
+		//			stream.waiter.Done()
+		//			return
+		//		}
+		//		items[i] = item
+		//	}
+		//	err := stream.WriteBatch(items)
+		//	if err != nil {
+		//		panic(err)
+		//	}
+		//}
 		select {
 		case item, isOpen := <-stream.Input:
 			if !isOpen {
@@ -120,6 +125,10 @@ func (stream *JsonStreamWriter) WriteBatch(items []*JsonStreamWriterItem) error 
 }
 
 func (stream *JsonStreamWriter) Close() error {
+	if stream.Input == nil {
+		return nil
+	}
+
 	close(stream.Input)
 
 	stream.waiter.Wait()
