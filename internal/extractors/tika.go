@@ -1,9 +1,7 @@
 package extractors
 
 import (
-	"context"
 	"fmt"
-	"github.com/google/go-tika/tika"
 	"github.com/larkwiot/booker/internal/book"
 	"github.com/larkwiot/booker/internal/config"
 	"io"
@@ -13,14 +11,14 @@ import (
 )
 
 type TikaServer struct {
-	url string
-	//client *tika.Client
+	url    string
+	client *http.Client
 }
 
 func NewTikaServer(conf *config.TikaConfig) *TikaServer {
 	return &TikaServer{
-		url: fmt.Sprintf("http://%s:%d", conf.Host, conf.Port),
-		//client: tika.NewClient(nil, fmt.Sprintf("http://%s:%d", conf.Host, conf.Port)),
+		url:    fmt.Sprintf("http://%s:%d/tika", conf.Host, conf.Port),
+		client: http.DefaultClient,
 	}
 }
 
@@ -38,18 +36,20 @@ func (ts *TikaServer) ExtractText(bk *book.Book, maxCharacters uint) (string, er
 	}
 	defer fh.Close()
 
-	// create new client every time because they are not thread safe and I don't
-	// want to synchronize just to reuse one when creating them seems to be cheap
-	client := tika.NewClient(http.DefaultClient, ts.url)
-
-	body, err := client.ParseReader(context.Background(), fh)
+	request, err := http.NewRequest("PUT", ts.url, fh)
 	if err != nil {
-		return "", fmt.Errorf("error: tika failed to parse file: %s: %s", bk.Filepath, err.Error())
+		return "", fmt.Errorf("error: unable to create request: %s", err.Error())
 	}
-	defer body.Close()
+	response, err := ts.client.Do(request)
+	if err != nil {
+		return "", fmt.Errorf("error: unable to complete request: %s", err.Error())
+	}
+	if response.Close {
+		defer response.Body.Close()
+	}
 
 	text := strings.Builder{}
-	count, err := io.CopyN(&text, body, int64(maxCharacters))
+	count, err := io.CopyN(&text, response.Body, int64(maxCharacters))
 	if err != nil {
 		return "", fmt.Errorf("error: tika failed to read response buffer into string for file: %s: %s", bk.Filepath, err.Error())
 	}
