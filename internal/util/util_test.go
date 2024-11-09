@@ -1,8 +1,8 @@
 package util_test
 
 import (
-	"booker/internal/book"
-	"booker/internal/util"
+	"github.com/larkwiot/booker/internal/book"
+	"github.com/larkwiot/booker/internal/util"
 	"github.com/stretchr/testify/assert"
 	"regexp"
 	"testing"

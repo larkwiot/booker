@@ -1,7 +1,7 @@
 package book_test
 
 import (
-	"booker/internal/book"
+	"github.com/larkwiot/booker/internal/book"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
