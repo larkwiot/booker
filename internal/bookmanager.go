@@ -111,15 +111,8 @@ func (bm *BookManager) Shutdown() {
 	bm.waitGroup.Wait()
 }
 
-func makeJsonStreamItem(bk *book.Book) *util.JsonStreamWriterItem {
-	bkData, err := json.Marshal(bk)
-	if err != nil {
-		return nil
-	}
-	return &util.JsonStreamWriterItem{
-		Key:  bk.Filepath,
-		Data: bkData,
-	}
+func (bm *BookManager) bestThreadCount() int {
+	return runtime.NumCPU() * len(bm.providers) * 2
 }
 
 func (bm *BookManager) finishBook(bk *book.Book) {
@@ -188,10 +181,6 @@ func (bm *BookManager) dispatch() {
 			return
 		}
 	}
-}
-
-func (bm *BookManager) bestThreadCount() int {
-	return runtime.NumCPU() * len(bm.providers) * 2
 }
 
 func (bm *BookManager) StartDryRun() {
@@ -360,11 +349,11 @@ func (bm *BookManager) search(search providers.SearchTerms) {
 	results := make([]book.BookResult, 0)
 
 	for _, provider := range bm.providers {
-		results, err := provider.GetBookMetadata(&search)
+		res, err := provider.GetBookMetadata(&search)
 		if err != nil {
 			continue
 		}
-		results = append(results, results...)
+		results = append(results, res...)
 	}
 
 	if len(results) == 0 {
@@ -393,20 +382,13 @@ func (bm *BookManager) collate(results []book.BookResult) {
 	bm.finishQueue <- result.ToBook()
 }
 
-type providerResult struct {
-	Results []book.BookResult
-	Error   error
-}
-
-func (bm *BookManager) getBookMetadata(search *providers.SearchTerms) map[string]providerResult {
-	if bm.IsDryRun() {
-		return map[string]providerResult{}
+func makeJsonStreamItem(bk *book.Book) *util.JsonStreamWriterItem {
+	bkData, err := json.Marshal(bk)
+	if err != nil {
+		return nil
 	}
-
-	return lo.SliceToMap(bm.providers, func(provider providers.Provider) (string, providerResult) {
-		results, err := provider.GetBookMetadata(search)
-		return provider.Name(), providerResult{
-			Results: results, Error: err,
-		}
-	})
+	return &util.JsonStreamWriterItem{
+		Key:  bk.Filepath,
+		Data: bkData,
+	}
 }
