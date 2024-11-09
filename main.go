@@ -40,11 +40,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bm, err := internal.NewBookManager(conf)
+	bm, err := internal.NewBookManager(conf, opts.Threads)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer bm.Shutdown()
 
-	bm.Scan(opts.ScanPath, opts.Cache, opts.Threads, opts.DryRun, opts.OutputPath, opts.RetryFailed)
+	bm.Scan(opts.ScanPath, opts.Cache, opts.DryRun, opts.OutputPath, opts.RetryFailed)
 }

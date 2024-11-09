@@ -195,7 +195,7 @@ func (bm *BookManager) IsDryRun() bool {
 	return bm.dryRun
 }
 
-func (bm *BookManager) Scan(scanPath string, cache string, threads int, dryRun bool, output string, retry bool) {
+func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output string, retry bool) {
 	scanPath, err := filepath.Abs(scanPath)
 	if err != nil {
 		log.Printf("error: could not get absolute scan path: %s\n", err.Error())
@@ -207,7 +207,7 @@ func (bm *BookManager) Scan(scanPath string, cache string, threads int, dryRun b
 		defer bm.EndDryRun()
 	}
 
-	log.Printf("book manager: preparing to scan with %d threads\n", threads)
+	log.Printf("book manager: preparing to scan with %d threads\n", bm.threads)
 
 	if len(cache) != 0 {
 		err := bm.importFrom(cache)
