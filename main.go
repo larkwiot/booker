@@ -5,6 +5,8 @@ import (
 	"github.com/larkwiot/booker/internal"
 	"github.com/larkwiot/booker/internal/config"
 	"log"
+	"os"
+	"runtime/debug"
 )
 
 func main() {
@@ -16,11 +18,21 @@ func main() {
 		Threads     int    `short:"t" long:"threads" description:"number of threads to use, set to 0 to automatically determine best count" default:"0"`
 		DryRun      bool   `long:"dry-run" description:"do a dry-run (don't make any requests to providers)'"`
 		RetryFailed bool   `long:"retry" descrption:"retry failed books (must also specify --cache)"`
+		Version     bool   `long:"version" description:"print version"`
 	}
 
 	_, err := flags.Parse(&opts)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if opts.Version {
+		info, ok := debug.ReadBuildInfo()
+		if !ok {
+			log.Fatal("error: unable to get build info")
+		}
+		log.Println(info)
+		os.Exit(0)
 	}
 
 	conf, err := config.NewConfig(opts.ConfigPath)
