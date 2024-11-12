@@ -10,6 +10,8 @@ import (
 )
 
 func main() {
+	log.SetFlags(log.Ltime)
+
 	var opts struct {
 		ConfigPath  string `short:"c" long:"config" description:"filepath to configuration file" default:"./booker.toml"`
 		ScanPath    string `short:"s" long:"scan" description:"directory path to scan" default:"./"`
@@ -33,6 +35,10 @@ func main() {
 		}
 		log.Println(info)
 		os.Exit(0)
+	}
+
+	if opts.RetryFailed && opts.Cache == "" {
+		log.Fatal("error: --cache must be specified you want to retry failed files")
 	}
 
 	conf, err := config.NewConfig(opts.ConfigPath)

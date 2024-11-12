@@ -1,10 +1,10 @@
 package util
 
 import (
+	"fmt"
 	"github.com/larkwiot/booker/internal/book"
 	"github.com/samber/lo"
-	"io/fs"
-	"path/filepath"
+	"os"
 	"regexp"
 	"strings"
 )
@@ -76,13 +76,13 @@ func LevenshteinDistance(a, b string) int {
 	return previousDistances[n-1]
 }
 
-func RecursiveFileCount(directory string, shouldBeCounted func(string, fs.DirEntry) bool) (uint, error) {
-	var count uint = 0
-	err := filepath.WalkDir(directory, func(path string, d fs.DirEntry, err error) error {
-		if shouldBeCounted(path, d) {
-			count++
-		}
-		return nil
-	})
-	return count, err
+func ClearTermLineString() string {
+	return fmt.Sprintf("\r%s\r", strings.Repeat(" ", 80))
+}
+
+func ExpandUser(p string) string {
+	if strings.HasPrefix(p, "~") {
+		return os.Getenv("HOME") + p[1:]
+	}
+	return p
 }

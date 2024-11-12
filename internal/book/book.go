@@ -89,30 +89,30 @@ func (isbn *ISBN13) IsValid() bool {
 }
 
 type Book struct {
-	Title        string            `json:"title"`
-	Authors      []string          `json:"authors"`
-	Isbn10       mo.Option[ISBN10] `json:"isbn10"`
-	Isbn13       mo.Option[ISBN13] `json:"isbn13"`
-	Uom          mo.Option[string] `json:"uom"`
-	LowYear      mo.Option[uint]   `json:"low_year"`
-	HighYear     mo.Option[uint]   `json:"high_year"`
-	Filepath     string            `json:"filepath"`
-	ErrorMessage string            `json:"error"`
+	Title        string   `json:"title"`
+	Authors      []string `json:"authors,omitempty"`
+	Isbn10       ISBN10   `json:"isbn10,omitempty"`
+	Isbn13       ISBN13   `json:"isbn13,omitempty"`
+	Uom          string   `json:"uom,omitempty"`
+	LowYear      uint     `json:"low_year,omitempty"`
+	HighYear     uint     `json:"high_year,omitempty"`
+	Filepath     string   `json:"filepath"`
+	ErrorMessage string   `json:"error,omitempty"`
 }
 
-func (b *Book) String() string {
-	return fmt.Sprintf("{\"title\": \"%s\", \"authors\": %s, \"isbn10\": %s, \"isbn13\": %s, \"filepath\": %s}", b.Title, b.Authors, b.Isbn10.OrElse(""), b.Isbn13.OrElse(""), b.Filepath)
-}
+//func (b *Book) String() string {
+//	return fmt.Sprintf("{\"title\": \"%s\", \"authors\": %s, \"isbn10\": %s, \"isbn13\": %s, \"filepath\": %s}", b.Title, b.Authors, b.Isbn10, b.Isbn13, b.Filepath)
+//}
 
 func (b *Book) BestIdentifier() string {
-	if b.Isbn13.IsPresent() {
-		return string(b.Isbn13.MustGet())
+	if b.Isbn13 != "" {
+		return string(b.Isbn13)
 	}
-	if b.Isbn10.IsPresent() {
-		return string(b.Isbn10.MustGet())
+	if b.Isbn10 != "" {
+		return string(b.Isbn10)
 	}
-	if b.Uom.IsPresent() {
-		return string(b.Uom.MustGet())
+	if b.Uom != "" {
+		return b.Uom
 	}
 	if len(b.Title) != 0 {
 		return b.Title
@@ -139,21 +139,16 @@ func (br *BookResult) IsUnidentified() bool {
 }
 
 func (br *BookResult) ToBook() Book {
-	bk := Book{
+	return Book{
 		Filepath: br.Filepath,
+		Title:    br.Title.OrEmpty(),
 		Authors:  br.Authors.MustGet(),
-		Isbn10:   br.Isbn10,
-		Isbn13:   br.Isbn13,
-		Uom:      br.Uom,
-		LowYear:  br.LowYear,
-		HighYear: br.HighYear,
+		Isbn10:   br.Isbn10.OrEmpty(),
+		Isbn13:   br.Isbn13.OrEmpty(),
+		Uom:      br.Uom.OrEmpty(),
+		LowYear:  br.LowYear.OrEmpty(),
+		HighYear: br.HighYear.OrEmpty(),
 	}
-
-	if br.Title.IsPresent() {
-		bk.Title = br.Title.MustGet()
-	}
-
-	return bk
 }
 
 func ChooseBestResult(results []BookResult) (*BookResult, error) {

@@ -2,23 +2,21 @@ package extractors
 
 import (
 	"fmt"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/larkwiot/booker/internal/book"
 	"github.com/larkwiot/booker/internal/config"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 )
 
 type TikaServer struct {
-	url    string
-	client *http.Client
+	url string
 }
 
 func NewTikaServer(conf *config.TikaConfig) *TikaServer {
 	return &TikaServer{
-		url:    fmt.Sprintf("http://%s:%d/tika", conf.Host, conf.Port),
-		client: http.DefaultClient,
+		url: fmt.Sprintf("http://%s:%d/tika", conf.Host, conf.Port),
 	}
 }
 
@@ -36,11 +34,14 @@ func (ts *TikaServer) ExtractText(bk *book.Book, maxCharacters uint) (string, er
 	}
 	defer fh.Close()
 
-	request, err := http.NewRequest("PUT", ts.url, fh)
+	request, err := retryablehttp.NewRequest("PUT", ts.url, fh)
 	if err != nil {
 		return "", fmt.Errorf("error: unable to create request: %s", err.Error())
 	}
-	response, err := ts.client.Do(request)
+	client := retryablehttp.NewClient()
+	client.RetryMax = 50
+	client.Logger = nil
+	response, err := client.Do(request)
 	if err != nil {
 		return "", fmt.Errorf("error: unable to complete request: %s", err.Error())
 	}
