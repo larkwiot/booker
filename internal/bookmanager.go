@@ -342,6 +342,8 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 		log.Printf("error: failed to completely scan %s: %s\n", scanPath, err)
 	}
 
+	log.Printf("%sbook manager: all jobs created, waiting for processing to complete", util.ClearTermLineString())
+
 	ticker := time.NewTicker(100 * time.Millisecond)
 	go func() {
 		for {
@@ -351,7 +353,7 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 					fmt.Printf(util.ClearTermLineString())
 					return
 				}
-				fmt.Printf("%sstatus: queued %d -> extracting %d -> searching %d -> finished %d", util.ClearTermLineString(), len(bm.extractQueue), extractorsCounter.Load(), searchersCounter.Load(), bm.getProcessedBookCount())
+				fmt.Printf("%sprocessing: queued %d -> extracting %d -> searching %d -> finished %d", util.ClearTermLineString(), len(bm.extractQueue), extractorsCounter.Load(), searchersCounter.Load(), bm.getProcessedBookCount())
 			}
 		}
 	}()
