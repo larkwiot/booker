@@ -311,7 +311,15 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 
 	err = filepath.WalkDir(scanPath, func(path string, d fs.DirEntry, err error) error {
 		if d.IsDir() {
-			fsWalkStatus <- path
+			p := path
+			if len(path) > 20 {
+				p = fmt.Sprintf("%s...", path[:20])
+			}
+			dname := d.Name()
+			if len(dname) > 20 {
+				dname = dname[:20]
+			}
+			fsWalkStatus <- fmt.Sprintf("%s/%s", p, dname)
 			return nil
 		}
 
