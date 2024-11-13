@@ -6,75 +6,12 @@ import (
 	"github.com/larkwiot/booker/internal/book"
 	"github.com/larkwiot/booker/internal/config"
 	"github.com/larkwiot/booker/internal/util"
-	"github.com/samber/lo"
 	"github.com/samber/mo"
 	"log"
 	"net/http"
 	"path/filepath"
-	"slices"
 	"strings"
-	"sync"
-	"time"
 )
-
-type Google struct {
-	url         string
-	priority    int
-	rateLimiter <-chan time.Time
-	cache       sync.Map
-	disabled    bool
-}
-
-func NewGoogle(conf *config.GoogleConfig, priority int) *Google {
-	g := &Google{
-		url:         fmt.Sprintf("https://%s", conf.Url),
-		priority:    priority,
-		rateLimiter: time.Tick(time.Duration(conf.MillisecondsPerRequest) * time.Millisecond),
-		cache:       sync.Map{},
-		disabled:    false,
-	}
-
-	return g
-}
-
-func (g *Google) Name() string {
-	return "Google"
-}
-
-func (g *Google) Priority() int {
-	return g.priority
-}
-
-func (g *Google) GetBookMetadata(search *SearchTerms) ([]book.BookResult, error) {
-	results := make([]book.BookResult, 0)
-
-	isbn10s := lo.Map(search.Isbn10s, func(isbn book.ISBN10, _ int) book.ISBN {
-		return book.ISBN(isbn)
-	})
-
-	isbn13s := lo.Map(search.Isbn13s, func(isbn book.ISBN13, _ int) book.ISBN {
-		return book.ISBN(isbn)
-	})
-
-	allIsbns := slices.Concat(isbn10s, isbn13s)
-
-	for _, isbn := range allIsbns {
-		var result book.BookResult
-		if cachedResult, cached := g.cache.Load(isbn); cached {
-			result = cachedResult.(book.BookResult)
-		} else {
-			uncachedResult, err := g.fetchMetadata(isbn, search.Filepath)
-			if err != nil {
-				return nil, err
-			}
-			g.cache.Store(isbn, uncachedResult)
-			result = uncachedResult
-		}
-		results = append(results, result)
-	}
-
-	return results, nil
-}
 
 type googleIdentifier struct {
 	Type       string `json:"type"`
@@ -97,13 +34,22 @@ type googleResponse struct {
 	Items      []googleItem
 }
 
-func (g *Google) fetchMetadata(isbn book.ISBN, filePath string) (book.BookResult, error) {
-	if g.disabled {
-		return book.BookResult{}, fmt.Errorf("google provider self-disabled, probably due to rate limit")
+type Google struct {
+	url string
+}
+
+func NewGoogle(conf *config.GoogleConfig, priority int) Provider {
+	google := Google{
+		url: fmt.Sprintf("https://%s", conf.Url),
 	}
+	return NewGeneric(&google, priority, conf.MillisecondsPerRequest)
+}
 
-	<-g.rateLimiter
+func (g *Google) Name() string {
+	return "Google"
+}
 
+func (g *Google) FindResult(isbn book.ISBN, filePath string) (book.BookResult, error) {
 	queryUrl := fmt.Sprintf("%s?q=isbn:%s", g.url, isbn)
 	response, err := http.Get(queryUrl)
 	if err != nil {
@@ -176,10 +122,6 @@ func (g *Google) fetchMetadata(isbn book.ISBN, filePath string) (book.BookResult
 		Confidence:         100,
 		SourceProviderName: "google",
 	}, nil
-}
-
-func (g *Google) ClearCache() {
-	g.cache = sync.Map{}
 }
 
 func (g *Google) Shutdown() {
