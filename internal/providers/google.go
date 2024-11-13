@@ -22,6 +22,7 @@ type Google struct {
 	priority    int
 	rateLimiter <-chan time.Time
 	cache       sync.Map
+	disabled    bool
 }
 
 func NewGoogle(conf *config.GoogleConfig, priority int) *Google {
@@ -30,6 +31,7 @@ func NewGoogle(conf *config.GoogleConfig, priority int) *Google {
 		priority:    priority,
 		rateLimiter: time.Tick(time.Duration(conf.MillisecondsPerRequest) * time.Millisecond),
 		cache:       sync.Map{},
+		disabled:    false,
 	}
 
 	return g
@@ -96,6 +98,10 @@ type googleResponse struct {
 }
 
 func (g *Google) fetchMetadata(isbn book.ISBN, filePath string) (book.BookResult, error) {
+	if g.disabled {
+		return book.BookResult{}, fmt.Errorf("google provider self-disabled, probably due to rate limit")
+	}
+
 	<-g.rateLimiter
 
 	queryUrl := fmt.Sprintf("%s?q=isbn:%s", g.url, isbn)
@@ -104,8 +110,13 @@ func (g *Google) fetchMetadata(isbn book.ISBN, filePath string) (book.BookResult
 		return book.BookResult{}, err
 	}
 
+	if response.StatusCode != http.StatusTooManyRequests {
+		g.disabled = true
+		return book.BookResult{}, fmt.Errorf("google rate limit exceeded")
+	}
+
 	if response.StatusCode != http.StatusOK {
-		return book.BookResult{}, fmt.Errorf("error: google returned status code %d: %s", response.StatusCode, response.Body)
+		return book.BookResult{}, fmt.Errorf("google returned unhandled status code %d: %s", response.StatusCode, response.Body)
 	}
 
 	var result googleResponse
