@@ -88,7 +88,7 @@ func NewBookManager(conf *config.Config, threads int) (*BookManager, error) {
 	} else {
 		bm.threads = int64(threads)
 	}
-	if threads > 2000 {
+	if bm.threads > 2000 {
 		bm.threads = 2000
 	}
 
