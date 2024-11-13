@@ -183,6 +183,10 @@ func (bm *BookManager) finishThread() {
 	bm.scanWaitGroup.Done()
 }
 
+func (bm *BookManager) waitForThreads() {
+	bm.scanWaitGroup.Wait()
+}
+
 func (bm *BookManager) dispatch(extractorsCount *atomic.Int64, searchersCount *atomic.Int64, quit chan struct{}) {
 	for {
 		select {
@@ -354,7 +358,8 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 	for bm.getProcessedBookCount() != bookCount {
 		time.Sleep(500 * time.Millisecond)
 	}
-	bm.scanWaitGroup.Wait()
+
+	bm.waitForThreads()
 
 	dispatchStop <- struct{}{}
 
