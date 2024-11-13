@@ -348,6 +348,7 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 			select {
 			case _, isOpen := <-ticker.C:
 				if !isOpen {
+					fmt.Printf(util.ClearTermLineString())
 					return
 				}
 				fmt.Printf("%sstatus: queued %d -> extracting %d -> searching %d -> finished %d", util.ClearTermLineString(), len(bm.extractQueue), extractorsCounter.Load(), searchersCounter.Load(), bm.getProcessedBookCount())
@@ -364,7 +365,7 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 	dispatchStop <- struct{}{}
 
 	ticker.Stop()
-
+	time.Sleep(10 * time.Millisecond)
 	fmt.Printf(util.ClearTermLineString())
 
 	log.Println("book manager: scan complete")
