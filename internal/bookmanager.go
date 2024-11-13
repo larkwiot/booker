@@ -95,10 +95,11 @@ func NewBookManager(conf *config.Config, threads int) (*BookManager, error) {
 		bm.threads += 1
 	}
 
-	bm.extractQueue = make(chan book.Book, bm.threads+1)
-	bm.searchQueue = make(chan providers.SearchTerms, bm.threads+1)
-	bm.collateQueue = make(chan []book.BookResult, bm.threads+1)
-	bm.finishQueue = make(chan book.Book, bm.threads+1)
+	queueDepth := bm.threads * 2
+	bm.extractQueue = make(chan book.Book, queueDepth)
+	bm.searchQueue = make(chan providers.SearchTerms, queueDepth)
+	bm.collateQueue = make(chan []book.BookResult, queueDepth)
+	bm.finishQueue = make(chan book.Book, queueDepth)
 
 	return &bm, nil
 }
