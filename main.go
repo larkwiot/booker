@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	log.SetFlags(log.Ltime)
+	log.SetFlags(0)
 
 	var opts struct {
 		ConfigPath  string `short:"c" long:"config" description:"filepath to configuration file" default:"./booker.toml"`
