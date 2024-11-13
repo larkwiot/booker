@@ -91,6 +91,9 @@ func NewBookManager(conf *config.Config, threads int) (*BookManager, error) {
 	if bm.threads > 2000 {
 		bm.threads = 2000
 	}
+	if bm.threads&1 > 0 {
+		bm.threads += 1
+	}
 
 	bm.extractQueue = make(chan book.Book, bm.threads+1)
 	bm.searchQueue = make(chan providers.SearchTerms, bm.threads+1)
