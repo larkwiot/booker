@@ -171,15 +171,11 @@ func (bm *BookManager) getProcessedBookCount() uint64 {
 }
 
 func (bm *BookManager) addThread() {
-	for bm.getThreadCount() >= bm.threads {
+	for bm.currentThreadCount.Load() >= bm.threads {
 		time.Sleep(500 * time.Millisecond)
 	}
 	bm.scanWaitGroup.Add(1)
 	bm.currentThreadCount.Add(1)
-}
-
-func (bm *BookManager) getThreadCount() int64 {
-	return bm.currentThreadCount.Load()
 }
 
 func (bm *BookManager) finishThread() {
