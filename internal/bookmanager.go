@@ -9,7 +9,6 @@ import (
 	"github.com/larkwiot/booker/internal/providers"
 	"github.com/larkwiot/booker/internal/util"
 	"github.com/samber/lo"
-	"github.com/schollz/progressbar/v3"
 	"io/fs"
 	"log"
 	"os"
@@ -46,7 +45,6 @@ type BookManager struct {
 	books              map[string]book.Book
 	dryRun             bool
 	scanWaitGroup      *sync.WaitGroup
-	pb                 *progressbar.ProgressBar
 	outputWriter       *util.JsonStreamWriter
 	threads            int64
 	currentThreadCount atomic.Int64
