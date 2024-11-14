@@ -32,7 +32,7 @@ var Defaults = map[string]any{
 	"tika.port": 9998,
 
 	"google.url":                      "www.googleapis.com/books/v1/volumes",
-	"google.milliseconds_per_request": 1500,
+	"google.milliseconds_per_request": 1000,
 
 	"advanced.max_characters_to_search_for_isbn": 10000,
 }
