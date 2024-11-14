@@ -49,9 +49,8 @@ func (g *Google) Name() string {
 	return "Google"
 }
 
-func (g *Google) FindResult(isbn book.ISBN, filePath string) (book.BookResult, error) {
-	queryUrl := fmt.Sprintf("%s?q=isbn:%s", g.url, isbn)
 func (g *Google) FindResult(isbn book.ISBN, filePath string) (book.BookResult, error, int) {
+	queryUrl := fmt.Sprintf("%s&q=isbn:%s", g.isbnQueryUrl, isbn)
 	response, err := http.Get(queryUrl)
 	if err != nil {
 		return book.BookResult{}, err, 0
