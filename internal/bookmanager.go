@@ -129,10 +129,6 @@ func (bm *BookManager) bestThreadCount() int {
 	return runtime.NumCPU() * len(bm.providers) * 2
 }
 
-func (bm *BookManager) queueDepth() int {
-	return len(bm.extractQueue) + len(bm.searchQueue) + len(bm.collateQueue) + len(bm.finishQueue)
-}
-
 func (bm *BookManager) finishBook(bk *book.Book) {
 	defer bm.finishThread()
 
