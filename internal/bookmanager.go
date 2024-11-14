@@ -240,9 +240,18 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 		return
 	}
 
-	_, err = os.Stat(scanPath)
-	if err != nil {
+	if exists, err := util.PathExists(scanPath); !exists {
 		log.Printf("error: could not stat scan path: %s\n", err.Error())
+		return
+	}
+
+	output, err = filepath.Abs(util.ExpandUser(output))
+	if err != nil {
+		log.Printf("error: could not get absolute output path: %s\n", err.Error())
+		return
+	}
+	if exists, _ := util.PathExists(output); exists {
+		log.Printf("error: output filepath %s already exists, refusing to overwrite\n", output)
 		return
 	}
 
