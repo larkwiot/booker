@@ -35,14 +35,22 @@ type googleResponse struct {
 }
 
 type Google struct {
-	url string
+	url          string
+	apiKey       string
+	isbnQueryUrl string
 }
 
 func NewGoogle(conf *config.GoogleConfig, priority int) Provider {
 	google := Google{
-		url: fmt.Sprintf("https://%s", conf.Url),
+		url:    fmt.Sprintf("https://%s", conf.Url),
+		apiKey: conf.ApiKey,
 	}
-	return NewGeneric(&google, priority, conf.MillisecondsPerRequest)
+	if google.apiKey != "" {
+		google.isbnQueryUrl = fmt.Sprintf("%s?key=%s", google.url, google.apiKey)
+	} else {
+		google.isbnQueryUrl = fmt.Sprintf("%s?", google.url)
+	}
+	return NewGeneric(&google, conf.MillisecondsPerRequest)
 }
 
 func (g *Google) Name() string {
