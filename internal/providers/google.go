@@ -51,29 +51,25 @@ func (g *Google) Name() string {
 
 func (g *Google) FindResult(isbn book.ISBN, filePath string) (book.BookResult, error) {
 	queryUrl := fmt.Sprintf("%s?q=isbn:%s", g.url, isbn)
+func (g *Google) FindResult(isbn book.ISBN, filePath string) (book.BookResult, error, int) {
 	response, err := http.Get(queryUrl)
 	if err != nil {
-		return book.BookResult{}, err
-	}
-
-	if response.StatusCode != http.StatusTooManyRequests {
-		g.disabled = true
-		return book.BookResult{}, fmt.Errorf("google rate limit exceeded")
+		return book.BookResult{}, err, 0
 	}
 
 	if response.StatusCode != http.StatusOK {
-		return book.BookResult{}, fmt.Errorf("google returned unhandled status code %d: %s", response.StatusCode, response.Body)
+		return book.BookResult{}, fmt.Errorf("google returned bad status code %d: %s", response.StatusCode, response.Body), response.StatusCode
 	}
 
 	var result googleResponse
 
 	err = json.NewDecoder(response.Body).Decode(&result)
 	if err != nil {
-		return book.BookResult{}, err
+		return book.BookResult{}, err, response.StatusCode
 	}
 
 	if result.TotalItems == 0 {
-		return book.BookResult{}, nil
+		return book.BookResult{}, nil, response.StatusCode
 	}
 
 	var bestResult googleItem
@@ -89,7 +85,7 @@ func (g *Google) FindResult(isbn book.ISBN, filePath string) (book.BookResult, e
 		}
 	}
 	if bestMatch == magic {
-		return book.BookResult{}, fmt.Errorf("unable to identify a good match from multiple returned works")
+		return book.BookResult{}, fmt.Errorf("unable to identify a good match from multiple returned works"), response.StatusCode
 	}
 
 	var isbn10 mo.Option[book.ISBN10]
@@ -121,7 +117,7 @@ func (g *Google) FindResult(isbn book.ISBN, filePath string) (book.BookResult, e
 		PublishDate:        mo.Some(bestResult.VolumeInfo.PublishedDate),
 		Confidence:         100,
 		SourceProviderName: "google",
-	}, nil
+	}, nil, response.StatusCode
 }
 
 func (g *Google) Shutdown() {

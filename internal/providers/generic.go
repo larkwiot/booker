@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/larkwiot/booker/internal/book"
 	"github.com/samber/lo"
+	"log"
+	"net/http"
 	"slices"
 	"sync"
 	"time"
@@ -11,7 +13,7 @@ import (
 
 type GenericImpl interface {
 	Name() string
-	FindResult(isbn book.ISBN, filePath string) (book.BookResult, error)
+	FindResult(isbn book.ISBN, filePath string) (book.BookResult, error, int)
 	Shutdown()
 }
 
@@ -45,7 +47,14 @@ func (g *Generic) findResult(isbn book.ISBN, filePath string) (book.BookResult, 
 
 	<-g.rateLimiter
 
-	result, err := g.FindResult(isbn, filePath)
+	result, err, statusCode := g.FindResult(isbn, filePath)
+
+	if statusCode == http.StatusTooManyRequests {
+		g.disabled = true
+		log.Printf("error: provider %s rate limit exceeded, self-disabling provider\n", g.Name())
+		return book.BookResult{}, err
+	}
+
 	if err != nil {
 		g.cache.Store(isbn, result)
 	}
