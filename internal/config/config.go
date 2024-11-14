@@ -29,9 +29,6 @@ type GoogleConfig struct {
 type advanced struct {
 	MaxCharactersToSearchForIsbn uint `toml:"max_characters_to_search_for_isbn"`
 	MaxAttemptsToProcessBook     uint `toml:"max_attempts_to_process_book"`
-	WorldcatPriority             int  `toml:"worldcat_provider_priority"`
-	GooglePriority               int  `toml:"google_provider_priority"`
-	TikaPriority                 int  `toml:"tika_extractor_priority"`
 }
 
 type Config struct {
@@ -48,8 +45,6 @@ var Defaults = map[string]any{
 
 	"advanced.max_attempts_to_process_book":      10,
 	"advanced.max_characters_to_search_for_isbn": 10000,
-	"advanced.google_provider_priority":          100,
-	"advanced.tika_extractor_priority":           100,
 }
 
 func NewConfig(configPath string) (*Config, error) {
@@ -95,12 +90,6 @@ func (c *Config) Validate() error {
 
 	if c.Advanced.MaxCharactersToSearchForIsbn == 0 {
 		c.Advanced.MaxCharactersToSearchForIsbn = uint(Defaults["advanced.max_characters_to_search_for_isbn"].(int))
-	}
-	if c.Advanced.GooglePriority == 0 {
-		c.Advanced.GooglePriority = Defaults["advanced.google_provider_priority"].(int)
-	}
-	if c.Advanced.TikaPriority == 0 {
-		c.Advanced.TikaPriority = Defaults["advanced.tika_extractor_priority"].(int)
 	}
 
 	return nil

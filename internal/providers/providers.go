@@ -17,7 +17,6 @@ func (s *SearchTerms) HasAnyTerms() bool {
 type Provider interface {
 	Name() string
 	GetBookMetadata(search *SearchTerms) ([]book.BookResult, error)
-	Priority() int
 	ClearCache()
 	Shutdown()
 }

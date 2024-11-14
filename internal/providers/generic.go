@@ -19,25 +19,19 @@ type Generic struct {
 	GenericImpl
 
 	cache       sync.Map
-	priority    int
 	rateLimiter <-chan time.Time
 	disabled    bool
 }
 
-func NewGeneric(impl GenericImpl, priority int, millisecondsPerRequest uint) Provider {
+func NewGeneric(impl GenericImpl, millisecondsPerRequest uint) Provider {
 	g := &Generic{
 		GenericImpl: impl,
-		priority:    priority,
 		rateLimiter: time.Tick(time.Duration(millisecondsPerRequest) * time.Millisecond),
 		cache:       sync.Map{},
 		disabled:    false,
 	}
 
 	return g
-}
-
-func (g *Generic) Priority() int {
-	return g.priority
 }
 
 func (g *Generic) findResult(isbn book.ISBN, filePath string) (book.BookResult, error) {
