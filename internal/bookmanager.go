@@ -42,7 +42,6 @@ type BookManager struct {
 	collateQueue       chan []book.BookResult
 	finishQueue        chan book.Book
 	maxCharacters      uint
-	maxAttempts        uint
 	bookStateLock      *sync.Mutex
 	books              map[string]book.Book
 	dryRun             bool
@@ -63,7 +62,6 @@ func NewBookManager(conf *config.Config, threads int) (*BookManager, error) {
 		providers:          make([]providers.Provider, 0),
 		extractors:         make([]extractors.Extractor, 0),
 		maxCharacters:      conf.Advanced.MaxCharactersToSearchForIsbn,
-		maxAttempts:        conf.Advanced.MaxAttemptsToProcessBook,
 		bookStateLock:      &sync.Mutex{},
 		books:              make(map[string]book.Book),
 		dryRun:             false,
@@ -76,7 +74,7 @@ func NewBookManager(conf *config.Config, threads int) (*BookManager, error) {
 	}
 
 	if conf.Google.Enable {
-		bm.providers = append(bm.providers, providers.NewGoogle(&conf.Google, conf.Advanced.GooglePriority))
+		bm.providers = append(bm.providers, providers.NewGoogle(&conf.Google))
 	}
 
 	if len(bm.extractors) == 0 {
