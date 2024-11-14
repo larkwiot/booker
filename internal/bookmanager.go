@@ -25,8 +25,13 @@ var acceptedFileTypes = []string{
 	".epub",
 	".mobi",
 	".chm",
+	".htm",
+	".html",
 	".rst",
+	".rtf",
 	".txt",
+	".doc",
+	".docx",
 }
 
 type BookManager struct {
