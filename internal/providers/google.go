@@ -40,7 +40,7 @@ type Google struct {
 	isbnQueryUrl string
 }
 
-func NewGoogle(conf *config.GoogleConfig, priority int) Provider {
+func NewGoogle(conf *config.GoogleConfig) Provider {
 	google := Google{
 		url:    fmt.Sprintf("https://%s", conf.Url),
 		apiKey: conf.ApiKey,
