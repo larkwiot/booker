@@ -88,3 +88,7 @@ func (g *Generic) GetBookMetadata(search *SearchTerms) ([]book.BookResult, error
 func (g *Generic) ClearCache() {
 	g.cache = sync.Map{}
 }
+
+func (g *Generic) Disabled() bool {
+	return g.disabled
+}

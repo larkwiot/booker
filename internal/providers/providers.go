@@ -19,4 +19,5 @@ type Provider interface {
 	GetBookMetadata(search *SearchTerms) ([]book.BookResult, error)
 	ClearCache()
 	Shutdown()
+	Disabled() bool
 }
