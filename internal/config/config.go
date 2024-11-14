@@ -12,14 +12,6 @@ type TikaConfig struct {
 	Port   int    `toml:"port"`
 }
 
-type WorldCatConfig struct {
-	Enable            bool    `toml:"enable"`
-	Url               string  `toml:"url"`
-	Port              int     `toml:"port"`
-	ApiPath           string  `toml:"api_path"`
-	RequestsPerSecond float64 `toml:"requests_per_second"`
-}
-
 type GoogleConfig struct {
 	Enable                 bool   `toml:"enable"`
 	Url                    string `toml:"url"`
@@ -28,7 +20,6 @@ type GoogleConfig struct {
 
 type advanced struct {
 	MaxCharactersToSearchForIsbn uint `toml:"max_characters_to_search_for_isbn"`
-	MaxAttemptsToProcessBook     uint `toml:"max_attempts_to_process_book"`
 }
 
 type Config struct {
@@ -43,7 +34,6 @@ var Defaults = map[string]any{
 	"google.url":                      "www.googleapis.com/books/v1/volumes",
 	"google.milliseconds_per_request": 1500,
 
-	"advanced.max_attempts_to_process_book":      10,
 	"advanced.max_characters_to_search_for_isbn": 10000,
 }
 
