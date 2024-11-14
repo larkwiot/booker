@@ -186,6 +186,15 @@ func (bm *BookManager) waitForThreads() {
 	bm.scanWaitGroup.Wait()
 }
 
+func (bm *BookManager) allProvidersDead() bool {
+	for _, provider := range bm.providers {
+		if !provider.Disabled() {
+			return false
+		}
+	}
+	return true
+}
+
 func (bm *BookManager) dispatch(extractorsCount *atomic.Int64, searchersCount *atomic.Int64, quit chan struct{}) {
 	for {
 		select {
@@ -318,6 +327,10 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 	bookCount := bm.getProcessedBookCount()
 
 	err = filepath.WalkDir(scanPath, func(path string, d fs.DirEntry, err error) error {
+		if bm.allProvidersDead() {
+			return fmt.Errorf("all providers disabled")
+		}
+
 		if d.IsDir() {
 			p := path
 			if len(path) > 20 {
@@ -375,6 +388,10 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 	}()
 
 	for bm.getProcessedBookCount() != bookCount {
+		if bm.allProvidersDead() {
+			log.Println("error: all providers disabled")
+			return
+		}
 		time.Sleep(500 * time.Millisecond)
 	}
 
