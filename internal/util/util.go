@@ -86,3 +86,8 @@ func ExpandUser(p string) string {
 	}
 	return p
 }
+
+func PathExists(p string) (bool, error) {
+	_, err := os.Stat(p)
+	return err == nil, err
+}
