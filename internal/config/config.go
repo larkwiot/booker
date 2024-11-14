@@ -16,6 +16,7 @@ type GoogleConfig struct {
 	Enable                 bool   `toml:"enable"`
 	Url                    string `toml:"url"`
 	MillisecondsPerRequest uint   `toml:"requests_per_second"`
+	ApiKey                 string `toml:"api_key"`
 }
 
 type advanced struct {
