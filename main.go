@@ -1,11 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"github.com/jessevdk/go-flags"
 	"github.com/larkwiot/booker/internal"
+	"github.com/larkwiot/booker/internal/book"
 	"github.com/larkwiot/booker/internal/config"
+	"github.com/larkwiot/booker/internal/util"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 )
 
@@ -46,11 +50,44 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bm, err := internal.NewBookManager(conf, opts.Threads)
+	output, err := filepath.Abs(util.ExpandUser(opts.OutputPath))
+	if err != nil {
+		log.Printf("error: could not get absolute output path: %s\n", err.Error())
+		return
+	}
+	if exists, _ := util.PathExists(output); exists {
+		log.Printf("error: output filepath %s already exists, refusing to overwrite\n", output)
+		return
+	}
+
+	outputWriter, err := util.NewJsonStreamWriter[*book.Book](output, func(bk *book.Book) (util.JsonStreamWriterItem, error) {
+		bkData, err := json.Marshal(bk)
+		if err != nil {
+			return util.JsonStreamWriterItem{}, err
+		}
+		return util.JsonStreamWriterItem{
+			Key:  bk.Filepath,
+			Data: bkData,
+		}, nil
+	})
+	if err != nil {
+		log.Printf("error: unable to open to output path %s\n", output)
+		return
+	}
+
+	bm, err := internal.NewBookManager(conf, int64(opts.Threads))
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer bm.Shutdown()
 
-	bm.Scan(opts.ScanPath, opts.Cache, opts.DryRun, opts.OutputPath, opts.RetryFailed)
+	if len(opts.Cache) != 0 {
+		err = bm.Import(opts.Cache, opts.RetryFailed)
+		if err != nil {
+			log.Printf("error: book manager failed to import cache %s\n", opts.Cache)
+			return
+		}
+	}
+
+	bm.Scan(opts.ScanPath, opts.DryRun, outputWriter)
 }

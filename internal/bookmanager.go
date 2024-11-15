@@ -240,7 +240,7 @@ func (bm *BookManager) IsDryRun() bool {
 	return bm.dryRun
 }
 
-func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output string, retry bool) {
+func (bm *BookManager) Scan(scanPath string, dryRun bool, writer util.ObjectWriter[*book.Book]) {
 	scanPath, err := filepath.Abs(util.ExpandUser(scanPath))
 	if err != nil {
 		log.Printf("error: could not get absolute scan path: %s\n", err.Error())
@@ -248,19 +248,15 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 	}
 
 	if exists, err := util.PathExists(scanPath); !exists {
-		log.Printf("error: could not stat scan path: %s\n", err.Error())
+		log.Printf("error: could not stat scan path: %s\n", err)
 		return
 	}
 
-	output, err = filepath.Abs(util.ExpandUser(output))
-	if err != nil {
-		log.Printf("error: could not get absolute output path: %s\n", err.Error())
-		return
-	}
-	if exists, _ := util.PathExists(output); exists {
-		log.Printf("error: output filepath %s already exists, refusing to overwrite\n", output)
-		return
-	}
+	bm.writer = writer
+	defer func() {
+		bm.writer.Close()
+		bm.writer = nil
+	}()
 
 	if dryRun {
 		bm.StartDryRun()
@@ -300,21 +296,7 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 
 	log.Printf("book manager: loaded %d cached entries\n", bm.getProcessedBookCount())
 
-	log.Println("book manager: beginning scan")
-
-	fsWalkStatus := make(chan string)
-	go func() {
-		for {
-			select {
-			case d, isOpen := <-fsWalkStatus:
-				if !isOpen {
-					fmt.Printf(util.ClearTermLineString())
-					return
-				}
-				fmt.Printf("%sscanning: %s", util.ClearTermLineString(), d)
-			}
-		}
-	}()
+	log.Printf("book manager: beginning scan on %s\n", scanPath)
 
 	extractorsCounter := atomic.Int64{}
 	searchersCounter := atomic.Int64{}
@@ -400,12 +382,26 @@ func (bm *BookManager) Scan(scanPath string, cache string, dryRun bool, output s
 	log.Println("book manager: scan complete")
 }
 
-func (bm *BookManager) importFrom(outputPath string) error {
-	data, err := os.ReadFile(outputPath)
+func (bm *BookManager) Import(cache string, removeErrored bool) error {
+	if exists, err := util.PathExists(cache); !exists || err != nil {
+		return fmt.Errorf("error: could not open cache %s: %s", cache, err)
+	}
+	data, err := os.ReadFile(cache)
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(data, &bm.books)
+	err = json.Unmarshal(data, &bm.books)
+	if err != nil {
+		return err
+	}
+	if removeErrored {
+		for p, bk := range bm.books {
+			if len(bk.ErrorMessage) > 0 {
+				bm.removeProcessedBook(p)
+			}
+		}
+	}
+	return nil
 }
 
 func (bm *BookManager) extract(bk book.Book, counter *atomic.Int64) {

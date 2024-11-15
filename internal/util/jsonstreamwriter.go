@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -12,29 +13,31 @@ type JsonStreamWriterItem struct {
 	Data []byte
 }
 
-type JsonStreamWriter struct {
+type JsonStreamWriter[I any] struct {
 	Filepath       string
-	Input          chan *JsonStreamWriterItem
+	Input          chan JsonStreamWriterItem
 	waiter         sync.WaitGroup
 	fh             *os.File
 	lock           sync.Mutex
 	isInitialized  bool
 	batchThreshold int
+	convert        func(I) (JsonStreamWriterItem, error)
 }
 
-func NewJsonStreamWriter(filePath string) (*JsonStreamWriter, error) {
+func NewJsonStreamWriter[I any](filePath string, convert func(I) (JsonStreamWriterItem, error)) (*JsonStreamWriter[I], error) {
 	fh, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		return nil, err
 	}
-	stream := &JsonStreamWriter{
+	stream := &JsonStreamWriter[I]{
 		Filepath:       filePath,
-		Input:          make(chan *JsonStreamWriterItem, 10000),
+		Input:          make(chan JsonStreamWriterItem, 10000),
 		waiter:         sync.WaitGroup{},
 		fh:             fh,
 		lock:           sync.Mutex{},
 		isInitialized:  false,
 		batchThreshold: 10,
+		convert:        convert,
 	}
 	_, err = stream.fh.WriteString("{")
 	if err != nil {
@@ -51,32 +54,13 @@ func NewJsonStreamWriter(filePath string) (*JsonStreamWriter, error) {
 	return stream, nil
 }
 
-func (stream *JsonStreamWriter) writer() {
+func (stream *JsonStreamWriter[I]) writer() {
 	for {
-		//inQueue := len(stream.Input)
-		//if inQueue >= stream.batchThreshold {
-		//	items := make([]*JsonStreamWriterItem, inQueue)
-		//	for i := range inQueue {
-		//		item, isOpen := <-stream.Input
-		//		if !isOpen {
-		//			stream.waiter.Done()
-		//			return
-		//		}
-		//		items[i] = item
-		//	}
-		//	err := stream.WriteBatch(items)
-		//	if err != nil {
-		//		panic(err)
-		//	}
-		//}
 		select {
 		case item, isOpen := <-stream.Input:
 			if !isOpen {
 				stream.waiter.Done()
 				return
-			}
-			if item == nil {
-				continue
 			}
 			err := stream.WriteItem(item.Key, item.Data)
 			if err != nil {
@@ -93,7 +77,7 @@ func formatBuffer(key string, data []byte, initialized bool) string {
 	return fmt.Sprintf("\"%s\": %s", strings.ReplaceAll(key, "\"", ""), string(data))
 }
 
-func (stream *JsonStreamWriter) WriteItem(key string, data []byte) error {
+func (stream *JsonStreamWriter[I]) WriteItem(key string, data []byte) error {
 	stream.lock.Lock()
 	defer stream.lock.Unlock()
 
@@ -108,7 +92,7 @@ func (stream *JsonStreamWriter) WriteItem(key string, data []byte) error {
 	return stream.fh.Sync()
 }
 
-func (stream *JsonStreamWriter) WriteBatch(items []*JsonStreamWriterItem) error {
+func (stream *JsonStreamWriter[I]) WriteBatch(items []*JsonStreamWriterItem) error {
 	stream.lock.Lock()
 	defer stream.lock.Unlock()
 
@@ -124,9 +108,17 @@ func (stream *JsonStreamWriter) WriteBatch(items []*JsonStreamWriterItem) error 
 	return stream.fh.Sync()
 }
 
-func (stream *JsonStreamWriter) Close() error {
+func (stream *JsonStreamWriter[I]) WriteObject(obj I) {
+	item, err := stream.convert(obj)
+	if err != nil {
+		log.Printf("warning: could not write item to json stream because conversion failed: %s\n", err.Error())
+	}
+	stream.Input <- item
+}
+
+func (stream *JsonStreamWriter[I]) Close() {
 	if stream.Input == nil {
-		return nil
+		return
 	}
 
 	close(stream.Input)
@@ -138,12 +130,16 @@ func (stream *JsonStreamWriter) Close() error {
 
 	_, err := stream.fh.WriteString("}")
 	if err != nil {
-		return err
+		log.Printf("error: failed to write closing bracket: %s\n", err.Error())
+		return
 	}
 	err = stream.fh.Sync()
 	if err != nil {
-		return err
+		log.Printf("error: failed to sync, bracket might not be committed to file: %s\n", err.Error())
 	}
 
-	return stream.fh.Close()
+	err = stream.fh.Close()
+	if err != nil {
+		log.Printf("error: failed to close file handle: %s\n", err.Error())
+	}
 }
