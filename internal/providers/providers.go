@@ -2,6 +2,7 @@ package providers
 
 import (
 	"github.com/larkwiot/booker/internal/book"
+	"github.com/larkwiot/booker/internal/service"
 )
 
 type SearchTerms struct {
@@ -15,6 +16,7 @@ func (s *SearchTerms) HasAnyTerms() bool {
 }
 
 type Provider interface {
+	service.Service
 	Name() string
 	GetBookMetadata(search *SearchTerms) ([]book.BookResult, error)
 	ClearCache()
