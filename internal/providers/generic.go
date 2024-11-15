@@ -15,6 +15,7 @@ type GenericImpl interface {
 	Name() string
 	FindResult(isbn book.ISBN, filePath string) (book.BookResult, error, int)
 	Shutdown()
+	HealthCheck() (bool, string)
 }
 
 type Generic struct {
@@ -55,9 +56,10 @@ func (g *Generic) findResult(isbn book.ISBN, filePath string) (book.BookResult, 
 		return book.BookResult{}, err
 	}
 
-	if err != nil {
+	if err == nil {
 		g.cache.Store(isbn, result)
 	}
+
 	return result, err
 }
 
@@ -91,4 +93,8 @@ func (g *Generic) ClearCache() {
 
 func (g *Generic) Disabled() bool {
 	return g.disabled
+}
+
+func (g *Generic) SelfCheck() (bool, string) {
+	return !g.Disabled(), ""
 }

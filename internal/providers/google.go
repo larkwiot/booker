@@ -129,3 +129,7 @@ func (g *Google) FindResult(isbn book.ISBN, filePath string) (book.BookResult, e
 
 func (g *Google) Shutdown() {
 }
+
+func (g *Google) HealthCheck() (bool, string) {
+	return true, ""
+}
