@@ -6,8 +6,10 @@ import (
 	"github.com/larkwiot/booker/internal/book"
 	"github.com/larkwiot/booker/internal/config"
 	"io"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 type TikaServer struct {
@@ -60,4 +62,28 @@ func (ts *TikaServer) ExtractText(bk *book.Book, maxCharacters uint) (string, er
 	}
 
 	return text.String(), nil
+}
+
+func (ts *TikaServer) SelfCheck() (bool, string) {
+	return true, ""
+}
+
+func (ts *TikaServer) HealthCheck() (bool, string) {
+	client := retryablehttp.NewClient()
+	client.RetryMax = 2
+	client.HTTPClient.Timeout = time.Second * 2
+	client.Logger = nil
+	response, err := client.Get(ts.url)
+	if err != nil {
+		return false, err.Error()
+	}
+	if response.StatusCode != http.StatusOK {
+		body := strings.Builder{}
+		_, err := io.Copy(&body, response.Body)
+		if err != nil {
+			return false, fmt.Sprintf("could not read response body from tika server: %s", err.Error())
+		}
+		return false, fmt.Sprintf("tika server returned status code %d: %s", response.StatusCode, body)
+	}
+	return true, ""
 }
