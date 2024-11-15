@@ -91,3 +91,8 @@ func PathExists(p string) (bool, error) {
 	_, err := os.Stat(p)
 	return err == nil, err
 }
+
+type ObjectWriter[I any] interface {
+	WriteObject(I)
+	Close()
+}
