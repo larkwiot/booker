@@ -6,7 +6,9 @@ import (
 	"github.com/larkwiot/booker/internal/book"
 	"github.com/larkwiot/booker/internal/config"
 	"github.com/larkwiot/booker/internal/extractors"
+	"github.com/larkwiot/booker/internal/pipeline"
 	"github.com/larkwiot/booker/internal/providers"
+	"github.com/larkwiot/booker/internal/service"
 	"github.com/larkwiot/booker/internal/util"
 	"github.com/samber/lo"
 	"io/fs"
@@ -14,8 +16,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -34,37 +36,33 @@ var acceptedFileTypes = []string{
 }
 
 type BookManager struct {
-	providers          []providers.Provider
-	extractors         []extractors.Extractor
-	extractQueue       chan book.Book
-	searchQueue        chan providers.SearchTerms
-	collateQueue       chan []book.BookResult
-	finishQueue        chan book.Book
-	maxCharacters      uint
-	bookStateLock      *sync.Mutex
-	books              map[string]book.Book
-	dryRun             bool
-	scanWaitGroup      *sync.WaitGroup
-	outputWriter       *util.JsonStreamWriter
-	threads            int64
-	currentThreadCount atomic.Int64
+	providers         []providers.Provider
+	extractors        []extractors.Extractor
+	pipe              *pipeline.Pipeline
+	maxCharacters     uint
+	bookStateLock     *sync.RWMutex
+	books             map[string]book.Book
+	dryRun            bool
+	writer            util.ObjectWriter[*book.Book]
+	extractorsManager *service.ServiceManager
+	providersManager  *service.ServiceManager
 }
 
-func NewBookManager(conf *config.Config, threads int) (*BookManager, error) {
+func NewBookManager(conf *config.Config, threads int64) (*BookManager, error) {
 	err := conf.Validate()
 	if err != nil {
 		return nil, err
 	}
 
 	var bm = BookManager{
-		providers:          make([]providers.Provider, 0),
-		extractors:         make([]extractors.Extractor, 0),
-		maxCharacters:      conf.Advanced.MaxCharactersToSearchForIsbn,
-		bookStateLock:      &sync.Mutex{},
-		books:              make(map[string]book.Book),
-		dryRun:             false,
-		scanWaitGroup:      &sync.WaitGroup{},
-		currentThreadCount: atomic.Int64{},
+		providers:         make([]providers.Provider, 0),
+		extractors:        make([]extractors.Extractor, 0),
+		maxCharacters:     conf.Advanced.MaxCharactersToSearchForIsbn,
+		bookStateLock:     &sync.RWMutex{},
+		books:             make(map[string]book.Book),
+		dryRun:            false,
+		extractorsManager: service.NewServiceManager(15 * time.Second),
+		providersManager:  service.NewServiceManager(15 * time.Second),
 	}
 
 	if conf.Tika.Enable {
@@ -83,24 +81,31 @@ func NewBookManager(conf *config.Config, threads int) (*BookManager, error) {
 		return nil, fmt.Errorf("at least one provider must be enabled")
 	}
 
-	if threads == 0 {
-		bm.threads = int64(bm.bestThreadCount())
-		log.Printf("info: determined best thread count as: %d\n", bm.threads)
-	} else {
-		bm.threads = int64(threads)
+	for _, extractor := range bm.extractors {
+		bm.extractorsManager.Manage(extractor)
 	}
-	if bm.threads > 2000 {
-		bm.threads = 2000
-	}
-	if bm.threads&1 > 0 {
-		bm.threads += 1
+	for _, provider := range bm.providers {
+		bm.providersManager.Manage(provider)
 	}
 
-	queueDepth := bm.threads * 2
-	bm.extractQueue = make(chan book.Book, queueDepth)
-	bm.searchQueue = make(chan providers.SearchTerms, queueDepth)
-	bm.collateQueue = make(chan []book.BookResult, queueDepth)
-	bm.finishQueue = make(chan book.Book, queueDepth)
+	if threads == 0 {
+		threads = int64(bm.bestThreadCount())
+		log.Printf("info: determined best thread count as: %d\n", threads)
+	}
+	if threads > 2000 {
+		threads = 2000
+		log.Printf("info: capping thread count to %d\n", threads)
+	}
+	if threads&1 > 0 {
+		log.Printf("info: making thread count even to %d\n", threads)
+		threads += 1
+	}
+
+	bm.pipe = pipeline.NewPipeline(threads)
+	bm.pipe.AppendStage("extract", bm.extract)
+	bm.pipe.AppendStage("search", bm.search)
+	bm.pipe.AppendStage("collate", bm.collate)
+	bm.pipe.CollectorStage(bm.finishBook)
 
 	return &bm, nil
 }
@@ -112,11 +117,7 @@ func (bm *BookManager) Shutdown() {
 	for _, extractor := range bm.extractors {
 		extractor.Shutdown()
 	}
-	close(bm.extractQueue)
-	close(bm.searchQueue)
-	close(bm.collateQueue)
-	close(bm.finishQueue)
-	bm.scanWaitGroup.Wait()
+	bm.pipe.Wait()
 }
 
 func (bm *BookManager) bestThreadCount() int {
@@ -127,8 +128,8 @@ func (bm *BookManager) bestThreadCount() int {
 	return runtime.NumCPU() * len(bm.providers) * 2
 }
 
-func (bm *BookManager) finishBook(bk *book.Book) {
-	defer bm.finishThread()
+func (bm *BookManager) finishBook(b any) {
+	bk := b.(book.Book)
 
 	if bm.isBookProcessed(bk.Filepath) {
 		//log.Printf("error: book %s was already processed\n", bk.Filepath)
@@ -138,20 +139,20 @@ func (bm *BookManager) finishBook(bk *book.Book) {
 	bm.bookStateLock.Lock()
 	defer bm.bookStateLock.Unlock()
 
-	bm.outputWriter.Input <- makeJsonStreamItem(bk)
-	bm.books[bk.Filepath] = *bk
+	bm.writer.WriteObject(&bk)
+	bm.books[bk.Filepath] = bk
 }
 
 func (bm *BookManager) isBookProcessed(filePath string) bool {
-	bm.bookStateLock.Lock()
-	defer bm.bookStateLock.Unlock()
+	bm.bookStateLock.RLock()
+	defer bm.bookStateLock.RUnlock()
 	_, isProcessed := bm.books[filePath]
 	return isProcessed
 }
 
 func (bm *BookManager) getProcessedBook(filePath string) book.Book {
-	bm.bookStateLock.Lock()
-	defer bm.bookStateLock.Unlock()
+	bm.bookStateLock.RLock()
+	defer bm.bookStateLock.RUnlock()
 	return bm.books[filePath]
 }
 
@@ -162,70 +163,9 @@ func (bm *BookManager) removeProcessedBook(filePath string) {
 }
 
 func (bm *BookManager) getProcessedBookCount() uint64 {
-	bm.bookStateLock.Lock()
-	defer bm.bookStateLock.Unlock()
+	bm.bookStateLock.RLock()
+	defer bm.bookStateLock.RUnlock()
 	return uint64(len(bm.books))
-}
-
-func (bm *BookManager) addThread() {
-	for bm.currentThreadCount.Load() >= bm.threads {
-		time.Sleep(500 * time.Millisecond)
-	}
-	bm.scanWaitGroup.Add(1)
-	bm.currentThreadCount.Add(1)
-}
-
-func (bm *BookManager) finishThread() {
-	bm.currentThreadCount.Add(-1)
-	bm.scanWaitGroup.Done()
-}
-
-func (bm *BookManager) waitForThreads() {
-	bm.scanWaitGroup.Wait()
-}
-
-func (bm *BookManager) allProvidersDead() bool {
-	for _, provider := range bm.providers {
-		if !provider.Disabled() {
-			return false
-		}
-	}
-	return true
-}
-
-func (bm *BookManager) dispatch(extractorsCount *atomic.Int64, searchersCount *atomic.Int64, quit chan struct{}) {
-	for {
-		select {
-		case bk, isOpen := <-bm.extractQueue:
-			if !isOpen {
-				return
-			}
-			bm.addThread()
-			extractorsCount.Add(1)
-			go bm.extract(bk, extractorsCount)
-		case srch, isOpen := <-bm.searchQueue:
-			if !isOpen {
-				return
-			}
-			bm.addThread()
-			searchersCount.Add(1)
-			go bm.search(srch, searchersCount)
-		case res, isOpen := <-bm.collateQueue:
-			if !isOpen {
-				return
-			}
-			bm.addThread()
-			go bm.collate(res)
-		case bk, isOpen := <-bm.finishQueue:
-			if !isOpen {
-				return
-			}
-			bm.addThread()
-			go bm.finishBook(&bk)
-		case <-quit:
-			return
-		}
-	}
 }
 
 func (bm *BookManager) StartDryRun() {
@@ -263,60 +203,23 @@ func (bm *BookManager) Scan(scanPath string, dryRun bool, writer util.ObjectWrit
 		defer bm.EndDryRun()
 	}
 
-	log.Printf("book manager: preparing to scan with %d threads\n", bm.threads)
-
-	if len(cache) != 0 {
-		err := bm.importFrom(cache)
-		if err != nil {
-			log.Printf("error: book manager failed to import cache %s\n", cache)
-			return
-		}
-
-		if retry {
-			for p, bk := range bm.books {
-				if len(bk.ErrorMessage) > 0 {
-					bm.removeProcessedBook(p)
-				}
-			}
-		}
-	}
-
-	outputWriter, err := util.NewJsonStreamWriter(output)
-	if err != nil {
-		log.Printf("error: unable to open to output path %s\n", output)
-		return
-	}
-	bm.outputWriter = outputWriter
-	defer bm.outputWriter.Close()
+	log.Printf("book manager: preparing to scan with %d threads\n", bm.pipe.TotalThreadCount)
 
 	// write any existing books back out (mainly if we imported a cache)
 	for _, bk := range bm.books {
-		bm.outputWriter.Input <- makeJsonStreamItem(&bk)
+		bm.writer.WriteObject(&bk)
 	}
 
 	log.Printf("book manager: loaded %d cached entries\n", bm.getProcessedBookCount())
 
 	log.Printf("book manager: beginning scan on %s\n", scanPath)
 
-	extractorsCounter := atomic.Int64{}
-	searchersCounter := atomic.Int64{}
-
-	dispatchStop := make(chan struct{})
-	go bm.dispatch(&extractorsCounter, &searchersCounter, dispatchStop)
+	bm.pipe.Run(bm.failHandler)
 
 	bookCount := bm.getProcessedBookCount()
 
 	err = filepath.WalkDir(scanPath, func(path string, d fs.DirEntry, err error) error {
-		if bm.allProvidersDead() {
-			return fmt.Errorf("all providers disabled")
-		}
-
 		if d.IsDir() {
-			p := path
-			if len(p) > 40 {
-				p = fmt.Sprintf("%s...%s", p[:20], p[len(p)-20:])
-			}
-			fsWalkStatus <- p
 			return nil
 		}
 
@@ -337,47 +240,34 @@ func (bm *BookManager) Scan(scanPath string, dryRun bool, writer util.ObjectWrit
 
 		bookCount++
 
-		bm.extractQueue <- book.Book{Filepath: path}
+		bm.pipe.Frontend <- book.Book{Filepath: path}
 		return nil
 	})
-
-	close(fsWalkStatus)
 
 	if err != nil {
 		log.Printf("error: failed to completely scan %s: %s\n", scanPath, err)
 	}
 
-	log.Printf("%sbook manager: all jobs created, waiting for processing to complete", util.ClearTermLineString())
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	go func() {
-		for {
-			select {
-			case _, isOpen := <-ticker.C:
-				if !isOpen {
-					fmt.Printf(util.ClearTermLineString())
-					return
-				}
-				fmt.Printf("%sprocessing: queued %d -> extracting %d -> searching %d -> finished %d", util.ClearTermLineString(), len(bm.extractQueue), extractorsCounter.Load(), searchersCounter.Load(), bm.getProcessedBookCount())
-			}
-		}
-	}()
+	//log.Printf("%sbook manager: all jobs created, waiting for processing to complete", util.ClearTermLineString())
 
 	for bm.getProcessedBookCount() != bookCount {
-		if bm.allProvidersDead() {
-			log.Println("error: all providers disabled")
+		if len(bm.extractorsManager.GetLiveServices()) == 0 {
+			log.Println("error: all extractors down")
+			bm.pipe.Wait()
+			bm.pipe.Close()
+			return
+		}
+		if len(bm.providersManager.GetLiveServices()) == 0 {
+			log.Println("error: all providers down")
+			bm.pipe.Wait()
+			bm.pipe.Close()
 			return
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	bm.waitForThreads()
-
-	dispatchStop <- struct{}{}
-
-	ticker.Stop()
-	time.Sleep(10 * time.Millisecond)
-	fmt.Printf(util.ClearTermLineString())
+	bm.pipe.Wait()
+	bm.pipe.Close()
 
 	log.Println("book manager: scan complete")
 }
@@ -404,15 +294,19 @@ func (bm *BookManager) Import(cache string, removeErrored bool) error {
 	return nil
 }
 
-func (bm *BookManager) extract(bk book.Book, counter *atomic.Int64) {
-	defer func() {
-		bm.finishThread()
-		counter.Add(-1)
-	}()
+func (bm *BookManager) extract(a any) (any, error) {
+	bk := a.(book.Book)
 
 	texts := make([]string, 0)
 
-	for _, extractor := range bm.extractors {
+	liveExtractors := bm.extractorsManager.GetLiveServices()
+	if len(liveExtractors) == 0 {
+		return nil, fmt.Errorf("error: no live extractors found")
+	}
+
+	for _, svc := range liveExtractors {
+		extractor := svc.(extractors.Extractor)
+
 		text, err := extractor.ExtractText(&bk, bm.maxCharacters)
 		if err != nil {
 			//log.Printf("error: failed to extract text from %s: %s\n", bk.Filepath, err)
@@ -422,9 +316,7 @@ func (bm *BookManager) extract(bk book.Book, counter *atomic.Int64) {
 	}
 
 	if len(texts) == 0 {
-		bk.ErrorMessage = "no texts extracted"
-		bm.finishQueue <- bk
-		return
+		return bk, fmt.Errorf("no texts extracted")
 	}
 
 	isbn10s := make([]book.ISBN10, 0)
@@ -441,22 +333,25 @@ func (bm *BookManager) extract(bk book.Book, counter *atomic.Int64) {
 		Filepath: bk.Filepath,
 	}
 
-	bm.searchQueue <- search
+	return search, nil
 }
 
-func (bm *BookManager) search(search providers.SearchTerms, counter *atomic.Int64) {
-	defer func() {
-		bm.finishThread()
-		counter.Add(-1)
-	}()
+func (bm *BookManager) search(a any) (any, error) {
+	search := a.(providers.SearchTerms)
 
 	if bm.IsDryRun() {
-		return
+		return nil, fmt.Errorf("dry run")
 	}
 
 	results := make([]book.BookResult, 0)
 
-	for _, provider := range bm.providers {
+	liveProviders := bm.providersManager.GetLiveServices()
+	if len(liveProviders) == 0 {
+		return nil, fmt.Errorf("error: no live providers found")
+	}
+
+	for _, svc := range liveProviders {
+		provider := svc.(providers.Provider)
 		res, err := provider.GetBookMetadata(&search)
 		if err != nil {
 			continue
@@ -465,38 +360,40 @@ func (bm *BookManager) search(search providers.SearchTerms, counter *atomic.Int6
 	}
 
 	if len(results) == 0 {
-		bm.finishQueue <- book.Book{
-			Filepath:     search.Filepath,
-			ErrorMessage: "no results found",
-		}
-		return
+		return results, fmt.Errorf("error: no results found")
 	}
 
-	bm.collateQueue <- results
+	return results, nil
 }
 
-func (bm *BookManager) collate(results []book.BookResult) {
-	defer bm.finishThread()
-
+func (bm *BookManager) collate(a any) (any, error) {
+	results := a.([]book.BookResult)
 	result, err := book.ChooseBestResult(results)
 	if err != nil {
-		bm.finishQueue <- book.Book{
-			Filepath:     results[0].Filepath,
-			ErrorMessage: fmt.Sprintf("could not collate: %s", err.Error()),
+		return book.Book{}, fmt.Errorf("could not collate: %s", err.Error())
+	}
+
+	return result.ToBook(), nil
+}
+
+func (bm *BookManager) failHandler(a any, err error) {
+	if a == nil {
+		if strings.Contains(err.Error(), "dry run") {
+			return
 		}
+		log.Println(err.Error())
 		return
 	}
 
-	bm.finishQueue <- result.ToBook()
-}
-
-func makeJsonStreamItem(bk *book.Book) *util.JsonStreamWriterItem {
-	bkData, err := json.Marshal(bk)
-	if err != nil {
-		return nil
-	}
-	return &util.JsonStreamWriterItem{
-		Key:  bk.Filepath,
-		Data: bkData,
+	switch a.(type) {
+	case book.Book:
+		b := a.(book.Book)
+		b.ErrorMessage = err.Error()
+		bm.finishBook(b)
+	case book.BookResult:
+	case []book.BookResult:
+	case providers.SearchTerms:
+	default:
+		log.Printf("warning: fail handler cannot handle type %s with %s\n", a, err.Error())
 	}
 }
