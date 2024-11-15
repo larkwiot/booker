@@ -3,9 +3,16 @@
 ### What is Booker
 Booker scans your files for ebooks and fetches metadata for them, completely automatically.
 
+### Features
+**Providers**
+* [Google Books API](https://books.google.com/intl/en/googlebooks/about/index.html)
+
+**Extractors**
+* [Apache Tika](https://cwiki.apache.org/confluence/display/TIKA/TikaServer)
+
 ### How Does It Work
-Booker utilizes extractors (currently only Apache Tika) and providers (currently only Google Books) to extract plaintext
-file contents, scan the contents for identifiers (currently only ISBNs), and find metadata based on them. It then
+Booker utilizes extractors and providers to extract plaintext
+file contents, scan the contents for identifiers (currently ISBNs), and find metadata based on them. It then
 dumps the metadata to a JSON file for you to integrate into whatever system you have.
 
 ### Installation
