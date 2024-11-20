@@ -125,7 +125,7 @@ func (bm *BookManager) bestThreadCount() int {
 		log.Printf("warning: cannot calculate best thread count without any providers initialized. Please create an issue for this")
 		return 0
 	}
-	return runtime.NumCPU() * len(bm.providers) * 2
+	return (runtime.NumCPU() / len(bm.extractors)) * len(bm.providers)
 }
 
 func (bm *BookManager) finishBook(b any) {
