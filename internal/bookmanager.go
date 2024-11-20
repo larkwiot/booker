@@ -129,6 +129,10 @@ func (bm *BookManager) bestThreadCount() int {
 }
 
 func (bm *BookManager) finishBook(b any) {
+	if bm.writer == nil {
+		return
+	}
+
 	bk := b.(book.Book)
 
 	if bm.isBookProcessed(bk.Filepath) {
