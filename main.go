@@ -84,7 +84,7 @@ func main() {
 	if len(opts.Cache) != 0 {
 		err = bm.Import(opts.Cache, opts.RetryFailed)
 		if err != nil {
-			log.Printf("error: book manager failed to import cache %s\n", opts.Cache)
+			log.Printf("error: book manager failed to import cache %s: %s\n", opts.Cache, err.Error())
 			return
 		}
 	}
