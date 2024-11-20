@@ -73,8 +73,7 @@ be bottlenecked by Tika CPU usage and/or provider rate limits before Booker slow
 will still be subject to the same rate limiter, there will not be a significant advantage to setting this very high,
 because the work not inside Booker, it is in Tika and the providers.
 
-For reference, setting the threads to 64 on my 36 thread, 128 GB server easily makes Tika max out CPU-usage on all cores,
-and brings other work the server is doing to a grind.
+For reference, setting the threads to 24 on my 36 thread, 128 GB RAM server nearly consumes 100% of the CPU.
 
 TL;DR I'd recommend keeping your thread count lower, e.g. 32 or less, even on powerful systems.
 
