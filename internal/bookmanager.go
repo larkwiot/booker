@@ -237,6 +237,11 @@ func (bm *BookManager) Scan(scanPath string, dryRun bool, writer util.ObjectWrit
 			return nil
 		}
 
+		path, err = filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+
 		if bm.isBookProcessed(path) {
 			//log.Printf("book manager: skipping already-processed %s\n", path)
 			return nil
@@ -284,6 +289,7 @@ func (bm *BookManager) Import(cache string, removeErrored bool) error {
 	if err != nil {
 		return err
 	}
+
 	err = json.Unmarshal(data, &bm.books)
 	if err != nil {
 		return err
