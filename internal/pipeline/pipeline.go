@@ -116,6 +116,7 @@ func (p *Pipeline) Wait() {
 		stage.Wait()
 	}
 	if p.collector != nil {
+		p.collector.Quit <- struct{}{}
 		p.collector.Wait()
 	}
 }

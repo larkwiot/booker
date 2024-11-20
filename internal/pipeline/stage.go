@@ -34,9 +34,6 @@ func (s *Stage) Close() {
 }
 
 func (s *Stage) Run(input chan any, output chan any, failHandler func(any, error)) {
-	s.pool.StartThread()
-	defer s.pool.StopThread()
-
 	work := func(i any) {
 		s.pool.StartThread()
 		defer s.pool.StopThread()
@@ -70,11 +67,13 @@ type CollectorStage struct {
 	collector func(any)
 	wait      sync.WaitGroup
 	count     uint64
+	Quit      chan struct{}
 }
 
 func NewCollectorStage(collector func(any)) *CollectorStage {
 	return &CollectorStage{
 		collector: collector,
+		Quit:      make(chan struct{}),
 	}
 }
 
@@ -83,12 +82,16 @@ func (s *CollectorStage) Run(input chan any) {
 	defer s.wait.Done()
 
 	for {
-		output, isOpen := <-input
-		if !isOpen {
+		select {
+		case output, isOpen := <-input:
+			if !isOpen {
+				return
+			}
+			s.count++
+			s.collector(output)
+		case <-s.Quit:
 			return
 		}
-		s.count++
-		s.collector(output)
 	}
 }
 
