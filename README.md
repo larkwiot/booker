@@ -11,9 +11,9 @@ Booker scans your files for ebooks and fetches metadata for them, completely aut
 * [Apache Tika](https://cwiki.apache.org/confluence/display/TIKA/TikaServer)
 
 ### How Does It Work
-Booker utilizes extractors and providers to extract plaintext
-file contents, scan the contents for identifiers (currently ISBNs), and find metadata based on them. It then
-dumps the metadata to a JSON file for you to integrate into whatever system you have.
+Inspired by [Ebook Tools](https://github.com/na--/ebook-tools) Booker utilizes extractors and providers to extract
+plaintext file contents, scan the contents for identifiers (currently ISBNs), and find metadata based on them.
+It then dumps the metadata to a JSON file for you to integrate into whatever system you have.
 
 ### Installation
 
@@ -167,6 +167,7 @@ References
 Tools
 * [jq](https://github.com/jqlang/jq)
 * [Calibre](https://github.com/kovidgoyal/calibre)
+* [Ebook Tools](https://github.com/na--/ebook-tools)
 
 ### Future Work
 * Extractor - Python Textract - Not really sure how to integrate Python into a Go tool, but would be really nice to get additional
