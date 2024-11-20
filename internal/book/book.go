@@ -96,6 +96,8 @@ type Book struct {
 	Uom          string   `json:"uom,omitempty"`
 	LowYear      uint     `json:"low_year,omitempty"`
 	HighYear     uint     `json:"high_year,omitempty"`
+	PublishDate  string   `json:"publish_date,omitempty"`
+	Publisher    string   `json:"publisher,omitempty"`
 	Filepath     string   `json:"filepath"`
 	ErrorMessage string   `json:"error,omitempty"`
 }
@@ -130,6 +132,7 @@ type BookResult struct {
 	LowYear            mo.Option[uint]
 	HighYear           mo.Option[uint]
 	PublishDate        mo.Option[string]
+	Publisher          mo.Option[string]
 	Confidence         float64
 	SourceProviderName string
 }
@@ -140,14 +143,16 @@ func (br *BookResult) IsUnidentified() bool {
 
 func (br *BookResult) ToBook() Book {
 	return Book{
-		Filepath: br.Filepath,
-		Title:    br.Title.OrEmpty(),
-		Authors:  br.Authors.MustGet(),
-		Isbn10:   br.Isbn10.OrEmpty(),
-		Isbn13:   br.Isbn13.OrEmpty(),
-		Uom:      br.Uom.OrEmpty(),
-		LowYear:  br.LowYear.OrEmpty(),
-		HighYear: br.HighYear.OrEmpty(),
+		Filepath:    br.Filepath,
+		Title:       br.Title.OrEmpty(),
+		Authors:     br.Authors.MustGet(),
+		Isbn10:      br.Isbn10.OrEmpty(),
+		Isbn13:      br.Isbn13.OrEmpty(),
+		Uom:         br.Uom.OrEmpty(),
+		LowYear:     br.LowYear.OrEmpty(),
+		HighYear:    br.HighYear.OrEmpty(),
+		PublishDate: br.PublishDate.OrEmpty(),
+		Publisher:   br.Publisher.OrEmpty(),
 	}
 }
 
